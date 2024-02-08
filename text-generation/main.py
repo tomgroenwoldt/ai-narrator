@@ -15,9 +15,10 @@ llm = Llama(
 )
 
 # LLM Prompt for producing David Attenborough sentences
-prompt = "GPT4 User: Rephrase the following description as if it were a narration out of one of david attenborough nature documentary. Describe people as if they were animals in a scientific objective fashion. Be brief. Don't provide a summary. Rephrase the following description: XXX<|end_of_turn|>GPT4 Assistant:"
+prompt = "GPT4 User: Rephrase the following description into a single sentence as if it were a narration out of one of david attenborough nature documentary. Keep it brief. Only provide a single and most importantly short sentence. CONTEXT: XXX<|end_of_turn|>GPT4 Assistant:"
 
 app = FastAPI()
+app.context = []
 
 @app.get("/process-image/")
 async def process_image(image_file: UploadFile = File(...)):
@@ -30,8 +31,18 @@ async def process_image(image_file: UploadFile = File(...)):
     description = model.generate({"image": image})
     joined_description = " ".join(description)
 
+    # Add context if we have any
+    temp_prompt = ""
+    if len(app.context) != 0:
+        use_context = " Try to build upon the following documentation context:\n\n " + " ".join(app.context) + " "
+        temp_prompt = prompt.replace("CONTEXT", use_context)
+    else:
+        temp_prompt = prompt.replace("CONTEXT", "")
+
+    print(temp_prompt)
+
     # Place the image caption inside the LLM prompt
-    ready_prompt = prompt.replace("XXX", joined_description)
+    ready_prompt = temp_prompt.replace("XXX", joined_description)
         
     # Execute llama.cpp with loaded model
     output = llm(
@@ -47,4 +58,8 @@ async def process_image(image_file: UploadFile = File(...)):
     # Remove the duplicate part
     sentence = answer[duplicate_index + len("GPT4 Assistant: "):]
 
+    app.context.append(sentence)
+    if len(app.context) > 10:
+        app.context = app.context[1:]
+    
     return sentence
